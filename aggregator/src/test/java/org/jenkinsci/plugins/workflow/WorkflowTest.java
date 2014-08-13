@@ -192,7 +192,7 @@ public class WorkflowTest extends SingleJobTestBase {
 
                 assertBuildCompletedSuccessfully();
 
-                story.j.assertLogContains("before=" + dir, b);
+                story.j.assertLogContains("before=" + new File(dir.toString()).getCanonicalPath(), b);
                 story.j.assertLogContains("ONSLAVE=true", b);
             }
         });
@@ -352,17 +352,20 @@ public class WorkflowTest extends SingleJobTestBase {
                 story.j.waitUntilNoActivity();
                 assertBuildCompletedSuccessfully(b1);
                 assertBuildCompletedSuccessfully(b2);
-                story.j.assertLogContains("default=" + dir, b1);
-                story.j.assertLogContains("before=" + dir + "@2", b1);
-                story.j.assertLogContains("after=" + dir + "@2", b1);
-                story.j.assertLogContains("default=" + dir + "@3", b2);
-                story.j.assertLogContains("before=" + dir + "@4", b2);
-                story.j.assertLogContains("after=" + dir + "@4", b2);
+
+                String canonicalDirPath = new File(dir.toString()).getCanonicalPath();
+
+                story.j.assertLogContains("default=" + canonicalDirPath, b1);
+                story.j.assertLogContains("before=" + canonicalDirPath + "@2", b1);
+                story.j.assertLogContains("after=" + canonicalDirPath + "@2", b1);
+                story.j.assertLogContains("default=" + canonicalDirPath + "@3", b2);
+                story.j.assertLogContains("before=" + canonicalDirPath + "@4", b2);
+                story.j.assertLogContains("after=" + canonicalDirPath + "@4", b2);
                 FileUtils.write(new File(jenkins().getRootDir(), "three"), "here");
                 WorkflowRun b3 = story.j.assertBuildStatusSuccess(p.scheduleBuild2(0, new ParametersAction(new StringParameterValue("FLAG", "three"))));
-                story.j.assertLogContains("default=" + dir, b3);
-                story.j.assertLogContains("before=" + dir + "@2", b3);
-                story.j.assertLogContains("after=" + dir + "@2", b3);
+                story.j.assertLogContains("default=" + canonicalDirPath, b3);
+                story.j.assertLogContains("before=" + canonicalDirPath + "@2", b3);
+                story.j.assertLogContains("after=" + canonicalDirPath + "@2", b3);
             }
         });
     }

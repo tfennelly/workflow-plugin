@@ -28,6 +28,7 @@ import com.google.common.collect.ImmutableList;
 import hudson.model.Action;
 import hudson.model.Actionable;
 import hudson.model.BallColor;
+import hudson.model.Saveable;
 import hudson.search.SearchItem;
 import java.io.IOException;
 import java.util.AbstractList;
@@ -50,7 +51,7 @@ import org.kohsuke.stapler.export.ExportedBean;
  * One node in a flow graph.
  */
 @ExportedBean
-public abstract class FlowNode extends Actionable {
+public abstract class FlowNode extends Actionable implements Saveable {
 
     private final List<FlowNode> parents;
 
@@ -185,12 +186,21 @@ public abstract class FlowNode extends Actionable {
         this.actions = new CopyOnWriteArrayList<Action>(actions);
     }
 
-/*
-    We can't use Actionable#actions to store actions because they aren't transient,
-    and we need to store actions elsewhere because this is the only mutable pat of FlowNode.
+    @Override
+    public void save() {
+        try {
+            exec.saveActions(FlowNode.this, actions);
+        } catch (IOException e) {
+            LOGGER.log(WARNING, "failed to save actions for FlowNode id=" + id, e);
+        }
+    }
 
-    So we create a separate transient field and store List of them there, and intercept every mutation.
- */
+    /*
+        We can't use Actionable#actions to store actions because they aren't transient,
+        and we need to store actions elsewhere because this is the only mutable pat of FlowNode.
+
+        So we create a separate transient field and store List of them there, and intercept every mutation.
+     */
     @Exported
     @Override
     public synchronized List<Action> getActions() {
@@ -203,45 +213,7 @@ public abstract class FlowNode extends Actionable {
                     }
                 }
 
-        return new AbstractList<Action>() {
-            @Override
-            public Action get(int index) {
-                return actions.get(index);
-            }
-
-            @Override
-            public void add(int index, Action element) {
-                actions.add(index, element);
-                persist();
-            }
-
-            @Override
-            public Action remove(int index) {
-                Action old = actions.remove(index);
-                persist();
-                return old;
-            }
-
-            @Override
-            public Action set(int index, Action element) {
-                Action old = actions.set(index, element);
-                persist();
-                return old;
-            }
-
-            @Override
-            public int size() {
-                return actions.size();
-            }
-
-            private void persist() {
-                try {
-                    exec.saveActions(FlowNode.this, actions);
-                } catch (IOException e) {
-                    LOGGER.log(WARNING, "failed to save actions for FlowNode id=" + id, e);
-                }
-            }
-        };
+        return new ActionList();
     }
 
     @Override
@@ -264,4 +236,36 @@ public abstract class FlowNode extends Actionable {
     }
 
     private static final Logger LOGGER = Logger.getLogger(FlowNode.class.getName());
+
+    private class ActionList extends AbstractList<Action> {
+        @Override
+        public Action get(int index) {
+            return actions.get(index);
+        }
+
+        @Override
+        public void add(int index, Action element) {
+            actions.add(index, element);
+            save();
+        }
+
+        @Override
+        public Action remove(int index) {
+            Action old = actions.remove(index);
+            save();
+            return old;
+        }
+
+        @Override
+        public Action set(int index, Action element) {
+            Action old = actions.set(index, element);
+            save();
+            return old;
+        }
+
+        @Override
+        public int size() {
+            return actions.size();
+        }
+    }
 }

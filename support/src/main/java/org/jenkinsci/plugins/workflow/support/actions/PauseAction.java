@@ -106,12 +106,15 @@ public class PauseAction extends InvisibleAction {
     }
 
     public static void endCurrentPause(FlowNode node) {
-        PauseAction currentPause = getCurrentPause(node);
-
-        if (currentPause != null) {
-            currentPause.setEndTime(System.currentTimeMillis());
-        } else {
-            LOGGER.log(Level.FINE, "‘endCurrentPause’ was called for a FlowNode (‘{0}’) that does not have an active pause. ‘endCurrentPause’ may have already been called.", node.getDisplayName());
+        try {
+            PauseAction currentPause = getCurrentPause(node);
+            if (currentPause != null) {
+                currentPause.setEndTime(System.currentTimeMillis());
+            } else {
+                LOGGER.log(Level.FINE, "‘endCurrentPause’ was called for a FlowNode (‘{0}’) that does not have an active pause. ‘endCurrentPause’ may have already been called.", node.getDisplayName());
+            }
+        } finally {
+            node.save();
         }
     }
 

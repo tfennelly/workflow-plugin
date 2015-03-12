@@ -25,6 +25,7 @@
 package org.jenkinsci.plugins.workflow.job;
 
 import hudson.console.LineTransformationOutputStream;
+import org.jenkinsci.plugins.workflow.actions.EnvLogMasksAction;
 import org.jenkinsci.plugins.workflow.actions.ThreadNameAction;
 import org.jenkinsci.plugins.workflow.actions.TimingAction;
 import org.jenkinsci.plugins.workflow.flow.FlowExecutionList;
@@ -61,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -247,14 +249,7 @@ public final class WorkflowRun extends Run<WorkflowJob,WorkflowRun> implements Q
                 AnnotatedLargeText<? extends FlowNode> logText = la.getLogText();
                 try {
                     long old = entry.getValue();
-                    OutputStream logger;
-
-                    String prefix = getLogPrefix(node);
-                    if (prefix != null) {
-                        logger = new LogLinePrefixOutputFilter(listener.getLogger(), "[" + prefix + "] ");
-                    } else {
-                        logger = listener.getLogger();
-                    }
+                    OutputStream logger = new OutputLoggerFactory(node).getLogger();
 
                     try {
                         long revised = logText.writeRawLogTo(old, logger);
@@ -269,8 +264,8 @@ public final class WorkflowRun extends Run<WorkflowJob,WorkflowRun> implements Q
                             modified = true;
                         }
                     } finally {
-                        if (prefix != null) {
-                            ((LogLinePrefixOutputFilter)logger).forceEol();
+                        if (logger instanceof LogLineOutputFilter) {
+                            ((LogLineOutputFilter)logger).forceEol();
                         }
                     }
                 } catch (IOException x) {
@@ -290,6 +285,27 @@ public final class WorkflowRun extends Run<WorkflowJob,WorkflowRun> implements Q
                 LOGGER.log(Level.WARNING, null, x);
             }
         }
+    }
+
+    private Set<String> getLogMasks(FlowNode node) {
+        if (node instanceof BlockEndNode) {
+            return null;
+        }
+
+        EnvLogMasksAction logMasksAction = node.getAction(EnvLogMasksAction.class);
+
+        if (logMasksAction != null) {
+            return logMasksAction.getMaskProperties();
+        }
+
+        for (FlowNode parent : node.getParents()) {
+            Set<String> logMasks = getLogMasks(parent);
+            if (logMasks != null) {
+                return logMasks;
+            }
+        }
+
+        return null;
     }
 
     private String getLogPrefix(FlowNode node) {
@@ -313,23 +329,65 @@ public final class WorkflowRun extends Run<WorkflowJob,WorkflowRun> implements Q
         return null;
     }
 
-    private static final class LogLinePrefixOutputFilter extends LineTransformationOutputStream {
+    private final class OutputLoggerFactory {
+        private final FlowNode node;
+
+        public OutputLoggerFactory(FlowNode node) {
+            this.node = node;
+        }
+
+        OutputStream getLogger() {
+            String logPrefix = getLogPrefix(node);
+            Set<String> logMasks = getLogMasks(node);
+
+            if (logPrefix != null || logMasks != null) {
+                return new LogLineOutputFilter(listener.getLogger())
+                        .setPrefix(logPrefix)
+                        .setLogMasks(logMasks);
+            }
+
+            return listener.getLogger();
+        }
+    }
+
+    private static final class LogLineOutputFilter extends LineTransformationOutputStream {
 
         private final PrintStream logger;
-        private final String prefix;
+        private String prefix;
+        private Set<String> logMasks;
 
-        protected LogLinePrefixOutputFilter(PrintStream logger, String prefix) {
+        protected LogLineOutputFilter(final PrintStream logger) {
             this.logger = logger;
+        }
+
+        private LogLineOutputFilter setPrefix(String prefix) {
             this.prefix = prefix;
+            return this;
+        }
+
+        private LogLineOutputFilter setLogMasks(Set<String> logMasks) {
+            this.logMasks = logMasks;
+            return this;
         }
 
         @Override
         protected void eol(byte[] b, int len) throws IOException {
-            logger.append(prefix);
-            logger.write(b, 0, len);
+            if (prefix != null) {
+                logger.append(prefix);
+            }
+            if (logMasks != null && !logMasks.isEmpty()) {
+                // TODO: charset? DefaultStepContext is using the local default
+                String text = new String(b, 0, len, Charset.defaultCharset());
+                for (String logMask : logMasks) {
+                    text = text.replace(logMask, "*******");
+                }
+                logger.append(text);
+            } else {
+                logger.write(b, 0, len);
+            }
         }
     }
-    
+
     private static final Map<String,WorkflowRun> LOADING_RUNS = new HashMap<String,WorkflowRun>();
 
     private String key() {
@@ -654,7 +712,7 @@ public final class WorkflowRun extends Run<WorkflowJob,WorkflowRun> implements Q
             logger.println(message);
         }
         // Flushing to keep logs printed in order as much as possible. The copyLogs method uses
-        // LargeText and possibly LogLinePrefixOutputFilter. Both of these buffer and flush, causing strange
+        // LargeText and possibly LogLineOutputFilter. Both of these buffer and flush, causing strange
         // out of sequence writes to the underlying log stream (and => things being printed out of sequence)
         // if we don't flush the logger here.
         logger.flush();

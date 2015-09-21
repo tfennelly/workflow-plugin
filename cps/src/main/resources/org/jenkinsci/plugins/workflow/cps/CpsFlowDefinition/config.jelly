@@ -25,7 +25,7 @@
 
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
   <f:entry title="${%Script}" field="script">
-    <div id="workflow-editor-wrapper" style="display: none; position: relative">
+    <div id="workflow-editor-wrapper" style="position: relative">
         <f:textarea checkMethod="post"/>
         <div id="workflow-editor" class="pane-frame" style="height: 250px;"/>
     </div>

@@ -79,3 +79,8 @@ jenkinsJSModules.import('ace-editor:ace-editor-122')
 
 wrapper.show();
 textarea.hide();
+
+// In reality, this would be done somewhere else so as to make it work
+// for all config pages on all job types + system config etc.
+var tabbar = require('jenkins-js-widgets').configTabBar();
+tabbar.addTabsOnFirst('config_workflow'); // and activate the script config tab
